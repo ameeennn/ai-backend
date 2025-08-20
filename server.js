@@ -7,7 +7,7 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-  origin: ["https://voltedgebuilds.github.io"],
+  origin: "*",
   methods: ["POST"],
   allowedHeaders: ["Content-Type"]
 }));
