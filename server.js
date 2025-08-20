@@ -2,74 +2,49 @@ import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import cors from "cors";
-import dns from "dns/promises"; // Use promises-based DNS module
 
 dotenv.config();
 const app = express();
+const PORT = process.env.PORT || 3000; // Use Render's PORT environment variable
 
-// Set custom DNS servers
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
-
-// DNS cache to avoid repeated lookups
-const dnsCache = new Map();
+// Correct CORS configuration for your GitHub Pages sites
+const allowedOrigins = ["https://voltedgebuilds.github.io", "https://ameennn.github.io"];
 
 app.use(cors({
-  origin: ["https://ameeennn.github.io", "https://voltedgebuilds.github.io"],
-  methods: ["POST", "GET", "OPTIONS"],
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = `The CORS policy for this site does not allow access from the specified Origin.`;
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  methods: ["POST", "GET"],
   allowedHeaders: ["Content-Type"],
-  credentials: false
 }));
+
 app.use(express.json());
 
-// Test DNS resolution endpoint
-app.get("/test-dns", async (req, res) => {
-  try {
-    const address = await dns.lookup("api.fal.ai");
-    res.json({ message: "DNS resolution successful", address: address.address, family: address.family });
-  } catch (err) {
-    res.status(500).json({ error: "DNS resolution failed", details: err.message });
-  }
-});
-
-// Test connectivity to fal.ai
-app.get("/test-connectivity", async (req, res) => {
-  try {
-    const response = await fetch("https://api.fal.ai");
-    res.json({ status: response.status, ok: response.ok });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// Main video generation endpoint
 app.post("/generate-video", async (req, res) => {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
   const { prompt } = req.body;
+
   if (!prompt) {
     return res.status(400).json({ error: "Prompt is required" });
   }
 
   try {
-    // Check DNS cache
-    let falIp = dnsCache.get("api.fal.ai");
-    if (!falIp) {
-      const { address } = await dns.lookup("api.fal.ai");
-      falIp = address;
-      dnsCache.set("api.fal.ai", falIp);
-    }
-
-    const response = await fetch(`https://${falIp}/v1/video/generation`, {
+    // Make the request directly to the domain name
+    const response = await fetch("https://api.fal.ai/v1/video/generation", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.FAL_API_KEY}`,
         "Content-Type": "application/json",
-        "Host": "api.fal.ai" // Required for correct routing
       },
       body: JSON.stringify({
         prompt: prompt,
-        model: "stability-video-diffusion" // Adjust as per fal.ai documentation
+        model: "stability-video-diffusion"
       })
     });
 
@@ -91,6 +66,11 @@ app.post("/generate-video", async (req, res) => {
   }
 });
 
-app.listen(10000, () => {
-  console.log("Server is running on port 10000");
+// Health check endpoint for Render
+app.get("/", (req, res) => {
+  res.status(200).send("AI backend is running.");
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
