@@ -2,26 +2,43 @@ import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import cors from "cors";
-import dns from "dns";
+import dns from "dns/promises"; // Use promises-based DNS module
 
 dotenv.config();
 const app = express();
 
+// Set custom DNS servers
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
+// DNS cache to avoid repeated lookups
+const dnsCache = new Map();
+
 app.use(cors({
-  origin: ["https://ameeennn.github.io"],
-  methods: ["POST"],
-  allowedHeaders: ["Content-Type"]
+  origin: ["https://ameeennn.github.io", "https://voltedgebuilds.github.io"],
+  methods: ["POST", "GET", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+  credentials: false
 }));
 app.use(express.json());
 
 // Test DNS resolution endpoint
 app.get("/test-dns", async (req, res) => {
-  dns.lookup("api.fal.ai", (err, address, family) => {
-    if (err) {
-      return res.status(500).json({ error: "DNS resolution failed", details: err.message });
-    }
-    res.json({ message: "DNS resolution successful", address, family });
-  });
+  try {
+    const address = await dns.lookup("api.fal.ai");
+    res.json({ message: "DNS resolution successful", address: address.address, family: address.family });
+  } catch (err) {
+    res.status(500).json({ error: "DNS resolution failed", details: err.message });
+  }
+});
+
+// Test connectivity to fal.ai
+app.get("/test-connectivity", async (req, res) => {
+  try {
+    const response = await fetch("https://api.fal.ai");
+    res.json({ status: response.status, ok: response.ok });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post("/generate-video", async (req, res) => {
@@ -35,23 +52,32 @@ app.post("/generate-video", async (req, res) => {
   }
 
   try {
-    const response = await fetch("https://api.fal.ai/v1/video/generation", {
+    // Check DNS cache
+    let falIp = dnsCache.get("api.fal.ai");
+    if (!falIp) {
+      const { address } = await dns.lookup("api.fal.ai");
+      falIp = address;
+      dnsCache.set("api.fal.ai", falIp);
+    }
+
+    const response = await fetch(`https://${falIp}/v1/video/generation`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.FAL_API_KEY}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Host": "api.fal.ai" // Required for correct routing
       },
       body: JSON.stringify({
         prompt: prompt,
-        model: "stability-video-diffusion" // Adjust model as per fal.io's available models
+        model: "stability-video-diffusion" // Adjust as per fal.ai documentation
       })
     });
 
     const data = await response.json();
-    console.log("fal.io Response:", data);
+    console.log("fal.ai Response:", JSON.stringify(data, null, 2));
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.message || "Video generation failed" });
+      return res.status(response.status).json({ error: data.message || "Video generation failed", raw: data });
     }
 
     if (data.video && data.video.url) {
