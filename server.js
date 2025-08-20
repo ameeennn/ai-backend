@@ -2,16 +2,27 @@ import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import cors from "cors";
+import dns from "dns";
 
 dotenv.config();
 const app = express();
 
 app.use(cors({
-  origin: "*",
+  origin: ["https://voltedgebuilds.github.io"],
   methods: ["POST"],
   allowedHeaders: ["Content-Type"]
 }));
 app.use(express.json());
+
+// Test DNS resolution endpoint
+app.get("/test-dns", async (req, res) => {
+  dns.lookup("api.fal.ai", (err, address, family) => {
+    if (err) {
+      return res.status(500).json({ error: "DNS resolution failed", details: err.message });
+    }
+    res.json({ message: "DNS resolution successful", address, family });
+  });
+});
 
 app.post("/generate-video", async (req, res) => {
   if (req.method !== "POST") {
